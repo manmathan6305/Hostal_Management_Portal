@@ -45,9 +45,7 @@ const normalizeOrigin = (origin) => origin.replace(/\/+$/, '').toLowerCase();
 
 const allowedOrigins = new Set(
   [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:5173',
+    ...(IS_PRODUCTION ? [] : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173']),
     process.env.FRONTEND_URL,
     ...(process.env.CORS_ALLOWED_ORIGINS || '').split(',')
   ]
@@ -66,7 +64,9 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
+    const error = new Error('Origin is not allowed.');
+    error.status = 403;
+    return callback(error);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -113,11 +113,17 @@ app.use(
 app.use('/api', generalRateLimiter);
 app.use('/api/auth', authRateLimiter);
 
-app.get('/health', (_req, res) => {
-  res.status(isDatabaseReady ? 200 : 503).json({
-    status: isDatabaseReady ? 'ok' : 'degraded',
-    database: isDatabaseReady ? 'connected' : 'disconnected'
-  });
+app.get('/health', async (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (isDatabaseReady) {
+      await sequelize.authenticate();
+      return res.json({ status: 'ok', database: 'connected' });
+    }
+  } catch {
+    // The next readiness request retries the database connection.
+  }
+  return res.status(503).json({ status: 'degraded', database: 'disconnected' });
 });
 
 app.use('/api', (req, res, next) => {

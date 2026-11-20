@@ -5,22 +5,14 @@
 require('dotenv').config();
 const mysql = require('mysql2/promise');
 
-const LOCAL_DB = {
-  host: 'localhost',
-  port: 3306,
-  user: 'root',
-  password: 'Manm@2045',
-  database: 'hostel_portal',
-};
-
-const RAILWAY_DB = {
-  host: 'metro.proxy.rlwy.net',
-  port: 50380,
-  user: 'root',
-  password: 'AXVdBctAncBnULHCqnrxJfPqaVixKyDO',
-  database: 'railway',
-  connectTimeout: 30000,
-};
+const LOCAL_DB = process.env.LOCAL_MYSQL_URL;
+const RAILWAY_DB = process.env.TARGET_MYSQL_URL;
+if (!LOCAL_DB || !RAILWAY_DB) {
+  throw new Error('Set LOCAL_MYSQL_URL and TARGET_MYSQL_URL before running the offline transfer.');
+}
+if (process.env.CONFIRM_REPLACE_TARGET_DATA !== 'true') {
+  throw new Error('This offline tool replaces table data. Explicit operator confirmation is required.');
+}
 
 const TABLES_IN_ORDER = [
   'users',

@@ -1,21 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { authApi } from '@/lib/api';
-
-const getGoogleAuthUrl = () => {
-  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
-  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'https:';
-  const fallbackApiBase = hostname.endsWith('.onrender.com')
-    ? `${protocol}//${hostname.replace('-portal.', '-backend.').replace('-frontend.', '-backend.')}/api`
-    : 'https://hostal-management-backend.onrender.com/api';
-
-  const apiBase =
-    (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ||
-    fallbackApiBase;
-  const authUrl = new URL(`${apiBase}/auth/google`);
-  authUrl.searchParams.set('redirect_origin', window.location.origin);
-  return authUrl.toString();
-};
+import { authApi, getGoogleAuthUrl } from '@/lib/api';
 
 export default function Register() {
   const navigate = useNavigate();
@@ -23,7 +8,6 @@ export default function Register() {
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
-    role: 'STUDENT',
     password: '',
     confirmPassword: ''
   });
@@ -80,7 +64,6 @@ export default function Register() {
         fullName: formData.fullName,
         email: formData.email,
         password: formData.password,
-        role: formData.role,
       });
 
       if (response.success) {
@@ -128,12 +111,13 @@ export default function Register() {
   }, []);
 
   useEffect(() => {
-    const token = searchParams.get('token');
-    const userId = searchParams.get('userId');
-    const email = searchParams.get('email');
-    const fullName = searchParams.get('fullName');
-    const role = searchParams.get('role');
-    const studentId = searchParams.get('studentId');
+    const authParams = new URLSearchParams(window.location.hash.slice(1));
+    const token = authParams.get('token');
+    const userId = authParams.get('userId');
+    const email = authParams.get('email');
+    const fullName = authParams.get('fullName');
+    const role = authParams.get('role');
+    const studentId = authParams.get('studentId');
     const error = searchParams.get('error');
 
     if (error) {
@@ -321,36 +305,19 @@ export default function Register() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#e7f4ff]" htmlFor="role">Role</label>
-                  <select
-                    id="role"
-                    name="role"
-                    value={formData.role}
-                    onChange={handleChange}
-                    className="input-glass w-full rounded-lg px-4 py-3 text-base outline-none transition-all focus:border-sky-300 focus:ring-2 focus:ring-sky-400/20"
-                  >
-                    <option value="STUDENT">Student</option>
-                    <option value="WARDEN">Warden</option>
-                    <option value="STAFF">Staff</option>
-                    <option value="ADMIN">Admin</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#e7f4ff]" htmlFor="password">Password</label>
-                  <input
-                    type="password"
-                    id="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    className="input-glass w-full rounded-lg px-4 py-3 text-base outline-none transition-all focus:border-sky-300 focus:ring-2 focus:ring-sky-400/20"
-                    placeholder="••••••••"
-                    autoComplete="new-password"
-                    required
-                  />
-                </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-[#e7f4ff]" htmlFor="password">Password</label>
+                <input
+                  type="password"
+                  id="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  className="input-glass w-full rounded-lg px-4 py-3 text-base outline-none transition-all focus:border-sky-300 focus:ring-2 focus:ring-sky-400/20"
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  required
+                />
               </div>
 
               <div>

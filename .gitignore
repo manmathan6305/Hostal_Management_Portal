@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.example
+*.sql
+/backend/uploads/
+/backend/src/seeds/localData.json
