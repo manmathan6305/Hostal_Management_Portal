@@ -141,7 +141,7 @@ router.get('/:id', verifyToken, authorizeRoles('ADMIN', 'WARDEN'), async (req, r
 });
 
 // POST /api/students - Create new student
-router.post('/', async (req, res) => {
+router.post('/', verifyToken, authorizeRoles('ADMIN'), async (req, res) => {
   try {
     const normalizedDepartment = normalizeDepartment(req.body.department);
     const normalizedPhone = sanitizePhoneNumber(req.body.phone);
@@ -209,7 +209,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/students/:id - Update student
-router.put('/:id', async (req, res) => {
+router.put('/:id', verifyToken, authorizeRoles('ADMIN'), async (req, res) => {
   try {
     const student = await Student.findByPk(req.params.id);
     
@@ -272,7 +272,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/students/:id - Delete student
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', verifyToken, authorizeRoles('ADMIN'), async (req, res) => {
   try {
     const student = await Student.findByPk(req.params.id);
     

@@ -1,0 +1,7 @@
+**
+!docker-entrypoint.sh
+!package.json
+!package-lock.json
+!src/
+!src/**
+src/seeds/

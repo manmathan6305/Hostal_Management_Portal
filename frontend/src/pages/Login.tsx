@@ -1,21 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { authApi } from '@/lib/api';
-
-const getGoogleAuthUrl = () => {
-  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
-  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'https:';
-  const fallbackApiBase = hostname.endsWith('.onrender.com')
-    ? `${protocol}//${hostname.replace('-portal.', '-backend.').replace('-frontend.', '-backend.')}/api`
-    : 'https://hostal-management-backend.onrender.com/api';
-
-  const apiBase =
-    (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ||
-    fallbackApiBase;
-  const authUrl = new URL(`${apiBase}/auth/google`);
-  authUrl.searchParams.set('redirect_origin', window.location.origin);
-  return authUrl.toString();
-};
+import { authApi, getGoogleAuthUrl } from '@/lib/api';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -59,12 +44,13 @@ export default function Login() {
 
   // Handle Google OAuth callback
   useEffect(() => {
-    const token = searchParams.get('token');
-    const userId = searchParams.get('userId');
-    const email = searchParams.get('email');
-    const fullName = searchParams.get('fullName');
-    const role = searchParams.get('role');
-    const studentId = searchParams.get('studentId');
+    const authParams = new URLSearchParams(window.location.hash.slice(1));
+    const token = authParams.get('token');
+    const userId = authParams.get('userId');
+    const email = authParams.get('email');
+    const fullName = authParams.get('fullName');
+    const role = authParams.get('role');
+    const studentId = authParams.get('studentId');
     const errorParam = searchParams.get('error');
 
     if (errorParam) {

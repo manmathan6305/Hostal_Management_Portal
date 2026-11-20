@@ -30,7 +30,8 @@ router.post('/', verifyToken, authorizeRoles('ADMIN'), async (req, res) => {
       staffRole: req.body.role === 'STAFF' ? req.body.staffRole : null,
       isActive: req.body.isActive ?? true
     });
-    res.json({ success: true, user });
+    const { password: _password, ...publicUser } = user.get({ plain: true });
+    res.json({ success: true, user: publicUser });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to create staff.', error: error.message });
   }
@@ -44,7 +45,8 @@ router.put('/:id', verifyToken, authorizeRoles('ADMIN'), async (req, res) => {
     if (updates.password) updates.password = await bcrypt.hash(updates.password, 10);
     if (updates.role !== 'STAFF') updates.staffRole = null;
     await user.update(updates);
-    res.json({ success: true, user });
+    const { password: _password, ...publicUser } = user.get({ plain: true });
+    res.json({ success: true, user: publicUser });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to update staff.', error: error.message });
   }
