@@ -3,9 +3,10 @@ const router = express.Router();
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const bcrypt = require('bcryptjs');
+const { randomBytes, createHash } = require('crypto');
 const User = require('../models/User');
 const Student = require('../models/Student');
-const { generateToken, verifyToken } = require('../middleware/auth');
+const { generateToken, verifyToken, authorizeRoles } = require('../middleware/auth');
 
 const stripTrailingSlash = (value) => String(value || '').replace(/\/+$/, '');
 
@@ -115,12 +116,7 @@ const isTrustedFrontendOrigin = (origin) => {
     if (!/^https?:$/.test(url.protocol)) return false;
 
     const normalized = normalizeOrigin(url.origin);
-    if (allowedFrontendOrigins.has(normalized)) return true;
-
-    // Allow Render frontend domains when explicit envs are not fully aligned.
-    if (url.hostname.endsWith('.onrender.com')) return true;
-
-    return false;
+    return url.origin === origin && allowedFrontendOrigins.has(normalized);
   } catch (_error) {
     return false;
   }
@@ -148,7 +144,9 @@ passport.use(new GoogleStrategy({
   },
   async (accessToken, refreshToken, profile, done) => {
     try {
-      const email = profile.emails[0].value;
+      const emailEntry = profile.emails?.find(entry => entry.verified === true || profile._json?.email_verified === true);
+      if (!emailEntry?.value) return done(null, false);
+      const email = emailEntry.value;
       const fullName = profile.displayName;
       const googleId = profile.id;
       
@@ -164,6 +162,8 @@ passport.use(new GoogleStrategy({
           role: 'STUDENT', // Default role for new Google sign-ins
           isActive: true
         });
+      } else if (!user.isActive || (user.googleId && user.googleId !== profile.id)) {
+        return done(null, false);
       } else if (!user.googleId) {
         user.googleId = googleId;
       }
@@ -194,6 +194,10 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
+const stateCookie = process.env.NODE_ENV === 'production' ? '__Host-portal-oauth' : 'portal-oauth';
+const cookieOptions = { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' };
+const stateDigest = state => createHash('sha256').update(state).digest('hex');
+
 // Google OAuth routes
 router.get('/google', (req, res, next) => {
   const queryOrigin = String(req.query.redirect_origin || '').trim();
@@ -207,9 +211,12 @@ router.get('/google', (req, res, next) => {
     scope: ['profile', 'email']
   };
 
-  if (frontendBase) {
-    authOptions.state = encodeBase64Url(JSON.stringify({ redirectOrigin: frontendBase }));
-  }
+  authOptions.state = encodeBase64Url(JSON.stringify({
+    redirectOrigin: frontendBase,
+    nonce: randomBytes(24).toString('hex')
+  }));
+  res.cookie(stateCookie, stateDigest(authOptions.state), { ...cookieOptions, maxAge: 10 * 60 * 1000 });
+  res.set('Cache-Control', 'no-store');
 
   return passport.authenticate('google', authOptions)(req, res, next);
 });
@@ -219,6 +226,14 @@ router.get('/google/callback',
     if (!isGoogleOAuthConfigured) {
       const frontendBase = resolveFrontendBase({ stateValue: req.query.state });
       return res.redirect(`${frontendBase}/login?error=${encodeURIComponent('google_oauth_not_configured')}`);
+    }
+    const state = req.query.state;
+    const expected = (req.headers.cookie || '').split(';').map(value => value.trim())
+      .find(value => value.startsWith(stateCookie + '='))?.slice(stateCookie.length + 1);
+    res.clearCookie(stateCookie, cookieOptions);
+    res.set('Cache-Control', 'no-store');
+    if (typeof state !== 'string' || expected !== stateDigest(state)) {
+      return res.redirect(`${FRONTEND_URL}/login?error=google_auth_failed`);
     }
     return next();
   },
@@ -258,7 +273,7 @@ router.get('/google/callback',
           params.append('studentId', studentId.toString());
         }
 
-        return res.redirect(`${frontendBase}/login?${params.toString()}`);
+        return res.redirect(`${frontendBase}/login#${params.toString()}`);
       } catch (callbackError) {
         console.error('Google callback error:', callbackError);
         return redirectError('google_auth_failed');
@@ -271,6 +286,9 @@ router.get('/google/callback',
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ success: false, message: 'Email and password are required.' });
+    }
     
     const user = await User.findOne({ where: { email } });
     
@@ -286,7 +304,7 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    if (!user.password && !user.googleId) {
+    if (!user.password || typeof password !== 'string' || !password) {
       return res.json({
         success: false,
         message: 'Account has no password set. Use Google login.',
@@ -300,7 +318,7 @@ router.post('/login', async (req, res) => {
 
     if (user.password) {
       const isMatch = await bcrypt.compare(password, user.password).catch(() => false);
-      const isLegacyPlainMatch = user.password === password;
+      const isLegacyPlainMatch = !/^\$2[aby]\$/.test(user.password) && user.password === password;
       if (!isMatch && !isLegacyPlainMatch) {
         return res.json({
           success: false,
@@ -310,6 +328,11 @@ router.post('/login', async (req, res) => {
           email: null,
           role: null,
           token: null
+        });
+      }
+      if (isLegacyPlainMatch && user.isActive) {
+        await User.update({ password: await bcrypt.hash(password, 10) }, {
+          where: { id: user.id, password: user.password }
         });
       }
     }
@@ -358,7 +381,14 @@ router.post('/login', async (req, res) => {
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { fullName, email, password, role, staffRole, phone } = req.body;
+    const { fullName, email, password, role, phone } = req.body;
+    if (role && role !== 'STUDENT') {
+      return res.status(403).json({ success: false, message: 'Staff accounts are managed by an administrator.' });
+    }
+    if (typeof fullName !== 'string' || !fullName.trim() || typeof email !== 'string' ||
+        !email.trim() || typeof password !== 'string' || !password.trim()) {
+      return res.status(400).json({ success: false, message: 'Name, email and password are required.' });
+    }
     
     // Check if email already exists
     const existingUser = await User.findOne({ where: { email } });
@@ -373,15 +403,14 @@ router.post('/register', async (req, res) => {
       });
     }
     
-    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create new user
     const user = await User.create({
       fullName,
       email,
       password: hashedPassword,
-      role: role || 'STUDENT',
-      staffRole: role === 'STAFF' ? (staffRole || null) : null,
+      role: 'STUDENT',
       phone: phone || null,
       isActive: true
     });
@@ -409,7 +438,7 @@ router.post('/register', async (req, res) => {
 });
 
 // GET /api/auth/users
-router.get('/users', async (req, res) => {
+router.get('/users', verifyToken, authorizeRoles('ADMIN'), async (req, res) => {
   try {
     const users = await User.findAll({
       attributes: ['id', 'fullName', 'email', 'role', 'staffRole', 'phone', 'gender', 'googleId', 'isActive', 'createdAt', 'updatedAt']

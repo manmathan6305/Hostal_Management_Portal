@@ -1,6 +1,10 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'hostel_management_secret_key_2024';
+const { randomBytes } = require('crypto');
+if (process.env.NODE_ENV === 'production' && (process.env.JWT_SECRET || '').length < 32) {
+  throw new Error('Configure JWT_SECRET with at least 32 random characters.');
+}
+const JWT_SECRET = process.env.JWT_SECRET || randomBytes(32).toString('hex');
 
 // Generate JWT token
 const generateToken = (user) => {
@@ -51,17 +55,7 @@ const authorizeRoles = (...roles) => (req, res, next) => {
   next();
 };
 
-// Admin ops middleware (ADMIN, WARDEN, STAFF can access)
-const isAdmin = (req, res, next) => {
-  const allowedRoles = ['ADMIN', 'WARDEN', 'STAFF'];
-  if (!allowedRoles.includes(req.user.role)) {
-    return res.status(403).json({
-      success: false,
-      message: 'Access denied. Admin privileges required.'
-    });
-  }
-  next();
-};
+const isAdmin = authorizeRoles('ADMIN');
 
 // Student only middleware
 const isStudent = (req, res, next) => {

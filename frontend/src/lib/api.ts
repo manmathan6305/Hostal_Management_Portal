@@ -32,6 +32,12 @@ const rawApiBaseUrl =
 
 const API_BASE_URL = rawApiBaseUrl.replace(/\/+$/, '');
 
+export const getGoogleAuthUrl = (): string => {
+  const authUrl = new URL(`${API_BASE_URL}/auth/google`, window.location.origin);
+  authUrl.searchParams.set('redirect_origin', window.location.origin);
+  return authUrl.toString();
+};
+
 export const getBackendAssetUrl = (assetPath?: string | null): string => {
   if (!assetPath) return '';
   if (/^https?:\/\//i.test(assetPath)) return assetPath;

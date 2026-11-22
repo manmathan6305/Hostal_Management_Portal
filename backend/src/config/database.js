@@ -24,7 +24,8 @@ const sequelize = new Sequelize(
           enableKeepAlive: true,
           ssl: {
             require: true,
-            rejectUnauthorized: false
+            rejectUnauthorized: true,
+            ...(process.env.DB_SSL_CA ? { ca: process.env.DB_SSL_CA.replace(/\\n/g, '\n') } : {})
           }
         }
       : {
