@@ -49,4 +49,16 @@ const sequelize = new Sequelize(
   }
 );
 
+// Linux MySQL can store the original portal tables with lowercase names.
+if (parseBoolean(process.env.DB_LOWERCASE_TABLES)) {
+  sequelize.addHook('beforeDefine', (attributes, options) => {
+    options.tableName = (options.tableName || options.name.plural).toLowerCase();
+    for (const attribute of Object.values(attributes)) {
+      if (typeof attribute.references?.model === 'string') {
+        attribute.references.model = attribute.references.model.toLowerCase();
+      }
+    }
+  });
+}
+
 module.exports = { sequelize, Sequelize };

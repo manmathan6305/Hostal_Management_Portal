@@ -1,6 +1,8 @@
 require('dotenv').config();
 const { sequelize, Sequelize } = require('../config/database');
 
+const Complaint = require('../models/Complaint');
+
 async function migrate() {
   try {
     console.log('Starting complaint image column migration...');
@@ -8,10 +10,11 @@ async function migrate() {
     console.log('Database connected.');
 
     const qi = sequelize.getQueryInterface();
-    const table = await qi.describeTable('Complaints');
+    const tableName = Complaint.getTableName();
+    const table = await qi.describeTable(tableName);
 
     if (!table.imageUrl) {
-      await qi.addColumn('Complaints', 'imageUrl', {
+      await qi.addColumn(tableName, 'imageUrl', {
         type: Sequelize.STRING(255),
         allowNull: true
       });

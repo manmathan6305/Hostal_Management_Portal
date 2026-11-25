@@ -250,7 +250,7 @@ const ensureComplaintSchema = async () => {
     return;
   }
 
-  const table = await qi.describeTable('Complaints');
+  const table = await qi.describeTable(Complaint.getTableName());
   complaintSchemaState = {
     tableExists: true,
     hasImageUrl: Boolean(table.imageUrl)

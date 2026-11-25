@@ -2,7 +2,21 @@ require('dotenv').config();
 const { sequelize } = require('../config/database');
 require('../models');
 
+async function waitForDatabase() {
+  const transient = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'EHOSTUNREACH', 'EAI_AGAIN']);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await sequelize.authenticate();
+      return;
+    } catch (error) {
+      if (!transient.has(error.original?.code) || attempt >= 12) throw error;
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+  }
+}
+
 async function prepareSchema() {
+  await waitForDatabase();
   const tables = await sequelize.getQueryInterface().showAllTables();
   const existing = new Set(tables);
   const models = Object.values(sequelize.models);
@@ -14,7 +28,14 @@ async function prepareSchema() {
     }
     if (existing.has(name)) await model.findAll({ limit: 0 });
   }
-  await sequelize.sync({ force: false, alter: false });
+  if (!process.argv.includes('--check')) {
+    // Preserve existing indexes and constraints. Create only absent tables in dependency order.
+    const dependenciesFirst = sequelize.modelManager.getModelsTopoSortedByForeignKey()?.reverse();
+    if (!dependenciesFirst) throw new Error('Review cyclic dependencies before creating tables.');
+    for (const model of dependenciesFirst) {
+      if (!existing.has(model.getTableName())) await model.sync({ force: false, alter: false });
+    }
+  }
   for (const model of models) await model.findAll({ limit: 0 });
   console.log(`Verified ${models.length} application tables.`);
 }
